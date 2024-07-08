@@ -11,34 +11,54 @@
 #define LOCK 1
 #define UNLOCK 0
 
-static volatile int counter = 0;
-static int lock_t = 0;
+typedef volatile int vint;
 
-int xchg(volatile int *addr, int newval) {
+static vint counter = 0;
+static vint lock_t = 0;
+
+int cmpxchgl(int expected, vint *status, int new_value) {
+  asm volatile("lock cmpxchgl %2, %1"
+               : "+a"(expected)
+               : "m"(*status), "r"(new_value)
+               : "memory", "cc");
+
+  return expected;
+}
+
+int xchg(vint *addr, int newval) {
   int result;
 
-  asm volatile("lock xchg %0, %1"
-               : "+m"(addr), "=a"(result)
-               : "m"(addr), "r"(newval)
-               : "memory", "cc");
+  asm volatile("lock xchg %1, %0"
+               : "=r"(result), "=m"(*addr)
+               : "0"(newval), "m"(*addr)
+               : "memory");
 
   return result;
 }
 
-void lock(int *lock) {
-  while (!xchg(lock, LOCK))
+void lock_cmpxchgl(vint *lock) {
+  while (cmpxchgl(UNLOCK, lock, LOCK) != UNLOCK)
     ;
 }
 
-void unlock(int *lock) { xchg(lock, UNLOCK); }
+void unlock_cmpxchgl(vint *lock) {
+  asm volatile("movl %1, %0" : "=m"(*lock) : "r"(UNLOCK) : "memory");
+}
+
+void lock_xchg(vint *lock) {
+  while (xchg(lock, LOCK))
+    ;
+}
+
+void unlock_xchg(vint *lock) { xchg(lock, UNLOCK); }
 
 void *mythread(void *arg) {
   printf("%s: begin\n", (char *)arg);
 
   for (int i = 0; i < 1e7; i++) {
-    lock(&lock_t);
+    lock_cmpxchgl(&lock_t);
     counter++;
-    unlock(&lock_t);
+    unlock_cmpxchgl(&lock_t);
   }
 
   printf("%s: end\n", (char *)arg);
@@ -47,11 +67,21 @@ void *mythread(void *arg) {
 }
 
 int main(int argc, char *argv[]) {
-  if (argc > 1 && strcmp(argv[1], "test") == 0) {
-    lock(&lock_t);
+  if (argc > 1 && strcmp(argv[1], "test_xchg") == 0) {
+    lock_xchg(&lock_t);
     printf("lock: lock_t: %d\n", lock_t);
 
-    unlock(&lock_t);
+    unlock_xchg(&lock_t);
+    printf("unlock: lock_t: %d\n", lock_t);
+
+    return 0;
+  }
+
+  if (argc > 1 && strcmp(argv[1], "test_cmpxchgl") == 0) {
+    lock_cmpxchgl(&lock_t);
+    printf("lock: lock_t: %d\n", lock_t);
+
+    unlock_cmpxchgl(&lock_t);
     printf("unlock: lock_t: %d\n", lock_t);
 
     return 0;

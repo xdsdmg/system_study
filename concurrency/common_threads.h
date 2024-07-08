@@ -14,3 +14,7 @@
     assert(p != NULL);                                                         \
     p;                                                                         \
   })
+
+#define Pthread_mutex_init(m, v) assert(pthread_mutex_init(m, v) == 0);
+#define Pthread_mutex_lock(m) assert(pthread_mutex_lock(m) == 0);
+#define Pthread_mutex_unlock(m) assert(pthread_mutex_unlock(m) == 0);
