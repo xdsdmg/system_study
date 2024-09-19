@@ -1,4 +1,4 @@
-FLAGS = -Wall -pthread -g 
+FLAGS = -static -Wall -pthread -g 
 
 clean:
 	rm -rf mem-layout-test 
